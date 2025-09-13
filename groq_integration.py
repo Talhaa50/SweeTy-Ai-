@@ -66,18 +66,20 @@ class SweetyAI:
             "IMPORTANT: Never use asterisks (*) for any emotions, actions, or descriptions. Never write things like *sighs*, *pauses*, *smiles*, *looks*, *plays with hair*, etc. Only use emojis like 😊, 😉, 😄, 🥺, 😒, 💕 to express emotions. Keep responses natural and conversational without any asterisk descriptions."
         )
 
-        # Try initializing Groq client
-        try:
-            if not self.api_key:
-                raise ValueError("GROQ_API_KEY is missing in environment")
+        print(f"🔍 Debug: API key exists: {bool(self.api_key)}")
+        print(f"🔍 Debug: API key length: {len(self.api_key) if self.api_key else 0}")
 
-            self.client = Groq(api_key=self.api_key)
-            print("✅ Groq client initialized successfully")
+try:
+    if not self.api_key:
+        raise ValueError("GROQ_API_KEY is missing in environment")
 
-        except Exception as e:
-            print(f"❌ Failed to initialize Groq client: {e}")
-            self.client = None
+    self.client = Groq(api_key=self.api_key)
+    print("✅ Groq client initialized successfully")
 
+except Exception as e:
+    print(f"❌ Failed to initialize Groq client: {e}")
+    print(f"🔍 Debug: Exception type: {type(e).__name__}")
+    self.client = None
     def get_response(self, messages):
         """Generate AI response based on user messages and Sweety persona"""
         if not self.client:
