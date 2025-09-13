@@ -3,8 +3,6 @@
 .env.local
 .env.production
 
-# Sensitive files
-groq_integration.py
 
 # Python cache
 __pycache__/
