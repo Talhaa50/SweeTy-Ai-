@@ -71,7 +71,10 @@ class SweetyAI:
             if not self.api_key:
                 raise ValueError("GROQ_API_KEY is missing in environment")
 
-            self.client = Groq(api_key=self.api_key)
+            self.client = Groq(
+                 api_key=self.api_key,
+                 timeout=30.0,
+            )
             print("✅ Groq client initialized successfully")
 
         except Exception as e:

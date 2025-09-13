@@ -13,8 +13,11 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'fallback-secret-key-change-in-production'
     
     # Database
+    instance_dir = os.path.join(basedir, 'instance')
+    os.makedirs(instance_dir, exist_ok=True)
+
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
-        'sqlite:///' + os.path.join(basedir, 'instance', 'database.db')
+    'sqlite:///' + os.path.join(instance_dir, 'database.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # Session settings

@@ -39,9 +39,14 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, default=True)
 
-# Create tables
+
+# Create tables safely
 with app.app_context():
-    db.create_all()
+    try:
+        db.create_all()
+        print("✅ Database tables created successfully")
+    except Exception as e:
+        print(f"⚠️ Database initialization error: {e}")
 
 # -------------------- JSON STORAGE --------------------
 def get_chat_file_path(session_id):
