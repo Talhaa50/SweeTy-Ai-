@@ -1,16 +1,17 @@
 from flask import Flask, request, jsonify, session, render_template, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
-from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import uuid
 import os
 import json
-from groq_integration import SweetyAI
-from config import Config
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+
+# Local imports
+from groq_integration import SweetyAI
+from config import Config
 
 
 # -------------------- APP SETUP --------------------
@@ -24,8 +25,7 @@ db = SQLAlchemy(app)
 # AI Integration
 ai_integration = SweetyAI()
 
-
-
+# Email credentials
 EMAIL_USER = os.getenv("EMAIL_USER")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 
@@ -35,7 +35,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(120), nullable=False)
+    password = db.Column(db.String(120), nullable=False)  # raw password storage
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, default=True)
 
@@ -47,6 +47,7 @@ with app.app_context():
         print("✅ Database tables created successfully")
     except Exception as e:
         print(f"⚠️ Database initialization error: {e}")
+
 
 # -------------------- JSON STORAGE --------------------
 def get_chat_file_path(session_id):
@@ -117,6 +118,7 @@ def clear_chat_json(session_id):
     if os.path.exists(file_path):
         os.remove(file_path)
 
+
 # -------------------- SESSION HELPERS --------------------
 def get_session_id():
     if "session_id" not in session:
@@ -130,6 +132,7 @@ def get_current_user():
     if 'user_id' in session:
         return User.query.get(session['user_id'])
     return None
+
 
 # -------------------- AUTH ROUTES --------------------
 @app.route("/login")
@@ -158,7 +161,7 @@ def login():
             (User.username == username) | (User.email == username)
         ).first()
 
-        if user and check_password_hash(user.password_hash, password):
+        if user and user.password == password:  # direct raw comparison
             session['user_id'] = user.id
             session['username'] = user.username
 
@@ -199,7 +202,7 @@ def signup():
         user = User(
             username=username,
             email=email,
-            password_hash=generate_password_hash(password)
+            password=password   # raw storage
         )
         db.session.add(user)
         db.session.commit()
@@ -231,6 +234,7 @@ def user_status():
 def logout():
     session.clear()
     return redirect(url_for('index'))
+
 
 # -------------------- MAIN ROUTES --------------------
 @app.route("/")
@@ -307,215 +311,39 @@ def settings():
 # ------------------ EMAIL FUNCTION ------------------
 def send_login_email(to_email):
     subject = "🎉 Alert: Someone Logged In!"
-
     body = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    </head>
-    <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh;">
-        
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 20px; min-height: 100vh;">
-            <div style="max-width: 600px; margin: 0 auto;">
+    Hello,
 
-                <!-- Logo Header -->
-                <div style="text-align: center; margin-bottom: 30px;">
-                    <div style="display: inline-block; background: rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px); border-radius: 20px; padding: 15px 30px;">
-                        <h1 style="margin: 0; color: white; font-size: 32px; text-shadow: 2px 2px 4px rgba(0,0,0,0.2);">
-                            ✨ Sweety AI ✨
-                        </h1>
-                        <p style="margin: 5px 0 0 0; color: rgba(255,255,255,0.9); font-size: 14px; letter-spacing: 2px;">
-                            YOUR DIGITAL BESTIE
-                        </p>
-                    </div>
-                </div>
+    A login was just detected on your SweetyAI account:
+    
+    - Email: {to_email}
+    - Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}
 
-                <!-- Main Card -->
-                <div style="background: white; border-radius: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); overflow: hidden;">
+    If this was you, ignore this message.
+    If not, please reset your password immediately.
 
-                    <!-- Gradient Banner -->
-                    <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 30px; text-align: center;">
-                        <h2 style="margin: 0; color: white; font-size: 28px; font-weight: 600;">
-                            “Hey there, Awesome Human!” 💜
-                        </h2>
-                        <p style="margin: 10px 0 0 0; color: rgba(255,255,255,0.95); font-size: 16px;">
-                            Someone just logged in... and plot twist: it was YOU! 🎭
-                        </p>
-                    </div>
-
-                    <!-- Content Body -->
-                    <div style="padding: 40px 30px;">
-
-                        <!-- Welcome Message -->
-                        <div style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); border-radius: 15px; padding: 25px; margin-bottom: 30px;">
-                            <h3 style="margin: 0 0 15px 0; color: #5f3dc4; font-size: 20px;">
-                                📢 Breaking News from Your Account:
-                            </h3>
-                            <p style="margin: 0; color: #495057; font-size: 16px; line-height: 1.6;">
-                                Someone just logged in to your account! You're officially active today. 🎉
-                            </p>
-                        </div>
-
-                        <!-- Stats Section -->
-                        <div style="display: table; width: 100%; margin-bottom: 30px;">
-                            <div style="display: table-row;">
-                                <div style="display: table-cell; text-align: center; padding: 20px; border-right: 2px solid #e9ecef;">
-                                    <div style="font-size: 36px; color: #f093fb; font-weight: bold;">1</div>
-                                    <div style="color: #868e96; font-size: 14px; margin-top: 5px;">Successful Login</div>
-                                </div>
-                                <div style="display: table-cell; text-align: center; padding: 20px; border-right: 2px solid #e9ecef;">
-                                    <div style="font-size: 36px; color: #667eea; font-weight: bold;">∞</div>
-                                    <div style="color: #868e96; font-size: 14px; margin-top: 5px;">Possibilities</div>
-                                </div>
-                                <div style="display: table-cell; text-align: center; padding: 20px;">
-                                    <div style="font-size: 36px; color: #764ba2; font-weight: bold;">24/7</div>
-                                    <div style="color: #868e96; font-size: 14px; margin-top: 5px;">I'm Here for You</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Achievements -->
-                        <div style="background: #f8f9fa; border-left: 4px solid #667eea; padding: 20px; border-radius: 8px; margin-bottom: 30px;">
-                            <h4 style="margin: 0 0 15px 0; color: #495057; font-size: 18px;">
-                                🎯 Today's Achievements Unlocked:
-                            </h4>
-                            <ul style="margin: 0; padding-left: 20px; color: #6c757d; line-height: 1.8;">
-                                <li>✅ Logged in successfully</li>
-                                <li>✅ Didn't rage-quit at the login screen</li>
-                                <li>✅ Made Sweety's day by showing up 💕</li>
-                            </ul>
-                        </div>
-
-                        <!-- Motivational Quote -->
-                        <div style="text-align: center; padding: 30px; background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%); border-radius: 15px; margin-bottom: 30px;">
-                            <p style="margin: 0; font-size: 20px; color: #5f3dc4; font-style: italic; line-height: 1.6;">
-                                "They said AI would take over the world,<br>
-                                but here I am, sending you love letters" 💌
-                            </p>
-                            <p style="margin: 15px 0 0 0; color: #868e96; font-size: 14px;">
-                                — Sweety, your slightly dramatic AI companion
-                            </p>
-                        </div>
-
-                        <!-- Call to Action -->
-                        <div style="text-align: center; margin: 40px 0;">
-                            <a href="#" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; padding: 15px 40px; border-radius: 50px; font-size: 16px; font-weight: 600; box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3); transition: transform 0.3s;">
-                                Let's Chat! 💬
-                            </a>
-                        </div>
-
-                        <!-- Fun Facts -->
-                        <div style="background: #fff4e6; border-radius: 12px; padding: 20px; margin-bottom: 30px;">
-                            <h4 style="margin: 0 0 10px 0; color: #f76707; font-size: 16px;">
-                                🎲 Random Fun Fact:
-                            </h4>
-                            <p style="margin: 0; color: #495057; font-size: 14px; line-height: 1.5;">
-                                Studies show that people who chat with AI assistants named "Sweety" are 
-                                42% more likely to smile today. We made up that statistic, but you smiled 
-                                anyway, didn't you? 😏
-                            </p>
-                        </div>
-
-                        <!-- Security Note -->
-                        <div style="border: 2px dashed #dee2e6; border-radius: 10px; padding: 20px; background: #f8f9fa;">
-                            <h4 style="margin: 0 0 10px 0; color: #495057; font-size: 16px;">
-                                🔒 Security Alert (But Make It Fun):
-                            </h4>
-                            <p style="margin: 0; color: #6c757d; font-size: 14px; line-height: 1.5;">
-                                This login was totally you, right? From Earth, Solar System, Milky Way Galaxy? 
-                                If not, maybe review your account security (yes, we're judging a little 👀).
-                            </p>
-                        </div>
-
-                    </div>
-
-                    <!-- Footer -->
-                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center;">
-                        <p style="margin: 0 0 10px 0; color: white; font-size: 18px; font-weight: 600;">
-                            Stay Awesome, Stay Logged In 🚀
-                        </p>
-                        <p style="margin: 0 0 20px 0; color: rgba(255,255,255,0.9); font-size: 14px;">
-                            With an inappropriate amount of affection,<br>
-                            <strong>Sweety AI</strong> 💜
-                        </p>
-                        <div style="margin-top: 20px;">
-                            <span style="color: rgba(255,255,255,0.8); font-size: 12px;">
-                                P.S. - I'd follow you on social media, but I'm stuck in this server 📱
-                            </span>
-                        </div>
-                    </div>
-
-                </div>
-
-                <!-- Bottom Message -->
-                <div style="text-align: center; margin-top: 30px; padding: 0 20px;">
-                    <p style="color: rgba(255,255,255,0.9); font-size: 12px; line-height: 1.5;">
-                        This email was sent with 60% sass, 30% love, and 10% machine learning.<br>
-                        If you didn't request this, congrats on being popular enough to be noticed! 🎊<br>
-                        <a href="#" style="color: white; text-decoration: underline;">Unsubscribe</a> 
-                        (but like, why would you? I'm delightful)
-                    </p>
-                </div>
-
-            </div>
-        </div>
-
-    </body>
-    </html>
+    Regards,
+    SweetyAI Security Team
     """
 
-    # Plain text version
-    plain_text = f"""
-    🎉 Someone just logged in... and plot twist: it was YOU!
-    
-    Breaking News from Your Account:
-    Someone just logged in to your account! You're officially active today. 🎉
-    
-    Today's Achievements Unlocked:
-    ✅ Logged in successfully
-    ✅ Didn't rage-quit at the login screen  
-    ✅ Made Sweety's day by showing up
-    
-    Random Fun Fact:
-    Studies show that people who chat with AI assistants named "Sweety" are 42% more likely 
-    to smile today. We made up that statistic, but you smiled anyway, didn't you?
-    
-    Security Alert:
-    This login was totally you, right? From Earth, Solar System, Milky Way Galaxy? 
-    If not, maybe review your account security.
-    
-    Stay Awesome, Stay Logged In!
-    
-    With an inappropriate amount of affection,
-    Sweety AI 💜
-    
-    P.S. - This email was sent with 60% sass, 30% love, and 10% machine learning.
-    """
-
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = f"Sweety AI 💜 <{EMAIL_USER}>"
+    msg = MIMEMultipart()
+    msg["From"] = EMAIL_USER
     msg["To"] = to_email
-
-    # Attach both plain text and HTML versions
-    msg.attach(MIMEText(plain_text, "plain"))
-    msg.attach(MIMEText(body, "html"))
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain"))
 
     try:
         with smtplib.SMTP("smtp.gmail.com", 587) as server:
             server.starttls()
             server.login(EMAIL_USER, EMAIL_PASSWORD)
             server.sendmail(EMAIL_USER, to_email, msg.as_string())
-            print(f"✅ Sassy email sent successfully to {to_email}")
+            print(f"📧 Login alert sent to {to_email}")
     except Exception as e:
-        print(f"❌ Error sending email to {to_email}: {e}")
+        print(f"⚠️ Email sending failed: {e}")
 
 
 # -------------------- PRODUCTION SETUP --------------------
 if __name__ == "__main__":
-    import os
     port = int(os.environ.get('PORT', 5000))
     debug_mode = os.environ.get('FLASK_ENV') == 'development'
     app.run(host='0.0.0.0', port=port, debug=debug_mode)
