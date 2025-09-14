@@ -85,7 +85,7 @@ class SweetyAI:
         if self.api_key and Groq:
             try:
                 print("Debug: Starting Groq initialization")
-                self.client = Groq(api_key=self.api_key)
+                self.client = Groq(api_key=self.api_key)  # ⚠️ Removed 'proxies' param
                 print("✅ Groq client initialized successfully")
             except Exception as e:
                 print(f"❌ Failed to initialize Groq client: {e}")
