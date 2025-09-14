@@ -30,6 +30,22 @@ EMAIL_USER = os.getenv("EMAIL_USER")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 
 
+import time
+from flask import request
+
+@app.before_request
+def start_timer():
+    request.start_time = time.time()
+
+@app.after_request
+def log_time(response):
+    if hasattr(request, "start_time"):
+        duration = time.time() - request.start_time
+        print(f"⏱️ {request.path} took {duration:.2f}s")
+    return response
+
+
+
 # -------------------- MODELS --------------------
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
