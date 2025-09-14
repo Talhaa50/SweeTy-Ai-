@@ -112,7 +112,7 @@ class SweetyAI:
             })
 
             # Only include last 10 user messages
-            for msg in messages[-10:]:
+            for msg in messages[-5:]:
                 formatted_messages.append({
                     "role": msg["role"],
                     "content": msg["content"]

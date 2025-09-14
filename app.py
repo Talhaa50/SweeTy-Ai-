@@ -85,13 +85,8 @@ def login():
         if user and user.password == password:
             session['user_id'] = user.id
             session['username'] = user.username
-
-            # -------------------- EMAIL FEATURE --------------------
-            try:
-                send_login_email(user.email)
-            except Exception as e:
-                print(f"⚠️ Email could not be sent: {e}")
-
+            
+            
             return jsonify({"success": True, "username": user.username})
         else:
             return jsonify({"error": "Invalid username or password"}), 401
