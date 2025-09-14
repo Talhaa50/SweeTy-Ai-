@@ -69,17 +69,27 @@ class SweetyAI:
         print(f"🔍 Debug: API key exists: {bool(self.api_key)}")
         print(f"🔍 Debug: API key length: {len(self.api_key) if self.api_key else 0}")
 
+# Try initializing Groq client
 try:
+    print("Debug: Starting Groq initialization")
+    print("Debug: API key exists:", bool(self.api_key))
+    
     if not self.api_key:
         raise ValueError("GROQ_API_KEY is missing in environment")
-
+    
+    from groq import Groq
     self.client = Groq(api_key=self.api_key)
-    print("✅ Groq client initialized successfully")
+    print("Groq client initialized successfully")
 
-except Exception as e:
-    print(f"❌ Failed to initialize Groq client: {e}")
-    print(f"🔍 Debug: Exception type: {type(e).__name__}")
+except ImportError as e:
+    print(f"Groq library import failed: {e}")
     self.client = None
+except Exception as e:
+    print(f"Failed to initialize Groq client: {e}")
+    self.client = None
+
+
+
     def get_response(self, messages):
         """Generate AI response based on user messages and Sweety persona"""
         if not self.client:
