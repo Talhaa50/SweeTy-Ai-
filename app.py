@@ -1,10 +1,8 @@
 from flask import Flask, request, jsonify, session, render_template, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
-from datetime import datetime, timezone, timedelta
-import uuid
+from datetime import datetime
 import os
-import json
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -12,7 +10,6 @@ from email.mime.multipart import MIMEMultipart
 # Local imports
 from groq_integration import SweetyAI
 from config import Config
-
 
 # -------------------- APP SETUP --------------------
 app = Flask(__name__)
@@ -30,22 +27,6 @@ EMAIL_USER = os.getenv("EMAIL_USER")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 
 
-import time
-from flask import request
-
-@app.before_request
-def start_timer():
-    request.start_time = time.time()
-
-@app.after_request
-def log_time(response):
-    if hasattr(request, "start_time"):
-        duration = time.time() - request.start_time
-        print(f"⏱️ {request.path} took {duration:.2f}s")
-    return response
-
-
-
 # -------------------- MODELS --------------------
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -54,7 +35,6 @@ class User(db.Model):
     password = db.Column(db.String(120), nullable=False)  # raw password storage
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, default=True)
-
 
 # Create tables safely
 with app.app_context():
@@ -65,82 +45,7 @@ with app.app_context():
         print(f"⚠️ Database initialization error: {e}")
 
 
-# -------------------- JSON STORAGE --------------------
-def get_chat_file_path(session_id):
-    chat_dir = os.path.join(os.path.dirname(__file__), 'chat_data')
-    os.makedirs(chat_dir, exist_ok=True)
-    return os.path.join(chat_dir, f'{session_id}.json')
-
-def save_message_to_json(session_id, role, content):
-    file_path = get_chat_file_path(session_id)
-    if os.path.exists(file_path):
-        with open(file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-    else:
-        data = {'messages': [], 'conversations': []}
-
-    data['messages'].append({
-        'role': role,
-        'content': content,
-        'timestamp': datetime.now(timezone.utc).isoformat()
-    })
-
-    with open(file_path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-def save_conversation_to_json(session_id, user_message, ai_response):
-    file_path = get_chat_file_path(session_id)
-    if os.path.exists(file_path):
-        with open(file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-    else:
-        data = {'messages': [], 'conversations': []}
-
-    data['conversations'].append({
-        'user_message': user_message,
-        'ai_response': ai_response,
-        'timestamp': datetime.now(timezone.utc).isoformat() 
-    })
-
-    with open(file_path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-def get_chat_history_from_json(session_id, limit=10):
-    file_path = get_chat_file_path(session_id)
-    if not os.path.exists(file_path):
-        return []
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        messages = data.get('messages', [])
-        return messages[-limit:] if len(messages) > limit else messages
-    except:
-        return []
-
-def get_conversation_history_from_json(session_id, limit=20):
-    file_path = get_chat_file_path(session_id)
-    if not os.path.exists(file_path):
-        return []
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        conversations = data.get('conversations', [])
-        return conversations[-limit:] if len(conversations) > limit else conversations
-    except:
-        return []
-
-def clear_chat_json(session_id):
-    file_path = get_chat_file_path(session_id)
-    if os.path.exists(file_path):
-        os.remove(file_path)
-
-
 # -------------------- SESSION HELPERS --------------------
-def get_session_id():
-    if "session_id" not in session:
-        session["session_id"] = str(uuid.uuid4())
-    return session["session_id"]
-
 def is_logged_in():
     return 'user_id' in session
 
@@ -177,7 +82,7 @@ def login():
             (User.username == username) | (User.email == username)
         ).first()
 
-        if user and user.password == password:  # direct raw comparison
+        if user and user.password == password:
             session['user_id'] = user.id
             session['username'] = user.username
 
@@ -186,7 +91,6 @@ def login():
                 send_login_email(user.email)
             except Exception as e:
                 print(f"⚠️ Email could not be sent: {e}")
-            # -------------------------------------------------------
 
             return jsonify({"success": True, "username": user.username})
         else:
@@ -218,7 +122,7 @@ def signup():
         user = User(
             username=username,
             email=email,
-            password=password   # raw storage
+            password=password
         )
         db.session.add(user)
         db.session.commit()
@@ -264,14 +168,14 @@ def chat():
         if not user_message:
             return jsonify({"error": "Message cannot be empty"}), 400
 
-        session_id = get_session_id()
-        save_message_to_json(session_id, "user", user_message)
+        # ephemeral chat: store in session only until browser closes
+        session_messages = session.get("messages", [])
+        session_messages.append({"role": "user", "content": user_message})
 
-        messages = get_chat_history_from_json(session_id, limit=10)
-        ai_reply = ai_integration.get_response(messages)
+        ai_reply = ai_integration.get_response(session_messages)
+        session_messages.append({"role": "assistant", "content": ai_reply})
 
-        save_message_to_json(session_id, "assistant", ai_reply)
-        save_conversation_to_json(session_id, user_message, ai_reply)
+        session["messages"] = session_messages
 
         return jsonify({"response": ai_reply})
 
@@ -279,37 +183,6 @@ def chat():
         print(f"Error in /chat route: {e}")
         return jsonify({"error": "Internal server error"}), 500
 
-@app.route("/history", methods=["GET"])
-def history():
-    try:
-        session_id = get_session_id()
-        conversations = get_conversation_history_from_json(session_id, limit=20)
-        return jsonify({"conversations": conversations})
-    except Exception as e:
-        print(f"Error in /history route: {e}")
-        return jsonify({"conversations": []})
-
-@app.route("/new-session", methods=["POST"])
-def new_session():
-    try:
-        session_id = get_session_id()
-        clear_chat_json(session_id)
-        session.pop("session_id", None)
-        return jsonify({"success": True})
-    except Exception as e:
-        print(f"Error in /new-session route: {e}")
-        return jsonify({"success": False, "error": str(e)})
-
-@app.route("/reset", methods=["POST"])
-def reset():
-    try:
-        session_id = get_session_id()
-        clear_chat_json(session_id)
-        return jsonify({"message": "Chat reset successfully"})
-    except Exception as e:
-        print(f"Error in /reset route: {e}")
-        return jsonify({"error": "Failed to reset chat"}), 500
-    
 
 # -------------------- OTHER ROUTES --------------------
 @app.route("/voice/transcribe", methods=["POST"])
